@@ -1,37 +1,39 @@
-from flask import Flask, request, jsonify
+import streamlit as st
 import pickle
 import numpy as np
-
-app = Flask(__name__)
+import pandas as pd
 
 # Load trained model
 MODEL_PATH = "model.pkl"
-try:
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
-except Exception:
-    model = None
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
 
-# Expected features based on dataset
-EXPECTED_FEATURES = ['date', 'bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 'view', 'condition', 'sqft_above', 'sqft_basement', 'yr_built', 'yr_renovated', 'street', 'city', 'statezip', 'country']
+# Expected features
+EXPECTED_FEATURES = model.named_steps["preprocessor"].transformers_[0][2] + \
+                    model.named_steps["preprocessor"].transformers_[1][2]
 
-@app.route("/predict", methods=["POST"])
-def predict():
-    if not model:
-        return jsonify({"error": "Model is not available."}), 500
+st.title("🏡 House Price Prediction App")
+st.write("Enter the values for the following features to predict house price:")
 
+# Create input fields dynamically
+input_data = []
+for feature in EXPECTED_FEATURES:
+    val = st.text_input(f"Enter value for {feature}:", "")
+    input_data.append(val)
+
+# Convert input to numeric where possible
+def safe_convert(val):
     try:
-        data = request.get_json()
-        # Ensure all expected features are provided
-        features = [data.get(col, 0) for col in EXPECTED_FEATURES]
-        prediction = model.predict([features])
-        return jsonify({"prediction": float(prediction[0])})
+        return float(val)
+    except:
+        return val
+
+input_data = [safe_convert(x) for x in input_data]
+
+if st.button("Predict"):
+    try:
+        df = pd.DataFrame([input_data], columns=EXPECTED_FEATURES)
+        prediction = model.predict(df)[0]
+        st.success(f"💰 Predicted House Price: {prediction:,.2f} USD")
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@app.route("/", methods=["GET"])
-def home():
-    return "House Price Prediction API is running! Expected features: " + ", ".join(EXPECTED_FEATURES)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+        st.error(f"Error: {e}")
